@@ -53,7 +53,18 @@ const VERIWORK_REGISTRY_ABI = [
   "function totalCommitments() external view returns (uint256)",
   "function totalVerifications() external view returns (uint256)",
   "function totalChallenges() external view returns (uint256)",
+  "event TaskCreated(string indexed taskId, string assetId, uint256 timestamp, address indexed creator)",
+  "event TaskAssigned(string indexed taskId, string technicianId, uint256 timestamp, address indexed assigner)",
+  "event TaskStarted(string indexed taskId, uint256 timestamp, address indexed technician)",
+  "event EvidenceCommitted(string indexed taskId, string packageId, bytes32 indexed evidenceHash, uint256 timestamp, address indexed submitter)",
+  "event VerificationRecorded(string indexed taskId, bytes32 indexed evidenceHash, uint8 verdict, uint8 integrityScore, uint256 timestamp)",
+  "event TaskClosed(string indexed taskId, uint256 timestamp, address indexed closer)",
+  "event ChallengeRaised(string indexed taskId, address indexed challenger, string reason, uint256 timestamp)",
+  "event ChallengeResolved(string indexed taskId, address indexed resolver, string resolutionNotes, uint256 timestamp)",
 ];
+
+const VERIWORK_INTERFACE = new ethers.Interface(VERIWORK_REGISTRY_ABI);
+const HISTORY_BLOCK_WINDOW = 10000;
 
 class BlockchainService {
   private rpcUrl: string;
@@ -205,6 +216,17 @@ class BlockchainService {
 
   public async getNetworkInfo() {
     const status = await this.getBlockchainStatus();
+
+    let recentTransactions: ChainTransaction[] = [];
+    try {
+      recentTransactions = await this.getRecentTransactions(50);
+    } catch (error) {
+      console.warn(
+        "[VERIWORK BLOCKCHAIN] Could not load historical transactions:",
+        (error as Error).message,
+      );
+    }
+
     return {
       network: status.network,
       chainId: status.chainId,
@@ -214,7 +236,7 @@ class BlockchainService {
       walletAddress: status.walletAddress,
       walletBalance: status.walletBalance,
       currentBlockNumber: status.latestBlock,
-      totalTransactions: this.transactions.size,
+      totalTransactions: recentTransactions.length,
       totalCommitments: this.commitments.size,
       rpcEndpoint: this.rpcUrl,
       explorerBaseUrl: this.explorerBaseUrl,
@@ -563,12 +585,186 @@ class BlockchainService {
     this.commitments.set(taskId, commitment);
   }
 
-  public getTransaction(txHash: string): ChainTransaction | undefined {
-    return this.transactions.get(txHash);
+  public async getTransaction(
+    txHash: string,
+  ): Promise<ChainTransaction | undefined> {
+    const cached = this.transactions.get(txHash);
+    if (cached) return cached;
+
+    if (!this.provider || !ethers.isHexString(txHash, 32)) {
+      return undefined;
+    }
+
+    try {
+      const [tx, receipt] = await Promise.all([
+        this.provider.getTransaction(txHash),
+        this.provider.getTransactionReceipt(txHash),
+      ]);
+
+      if (!tx || !receipt) return undefined;
+
+      const block = await this.provider.getBlock(receipt.blockNumber);
+      const parsed = tx.data
+        ? VERIWORK_INTERFACE.parseTransaction({
+            data: tx.data,
+            value: tx.value,
+          })
+        : null;
+
+      const chainTx: ChainTransaction = {
+        txHash: receipt.hash,
+        blockNumber: receipt.blockNumber,
+        timestamp: block
+          ? new Date(Number(block.timestamp) * 1000).toISOString()
+          : new Date().toISOString(),
+        from: receipt.from || tx.from,
+        to: tx.to || this.contractAddress,
+        method: parsed?.name || "contractCall",
+        params: parsed
+          ? this.normalizeParams(parsed.args, parsed.fragment.inputs)
+          : {},
+        status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
+        gasUsed: Number(receipt.gasUsed),
+        blockHash: receipt.blockHash || undefined,
+        explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
+      };
+
+      this.transactions.set(receipt.hash, chainTx);
+      return chainTx;
+    } catch (error) {
+      console.warn(
+        `[VERIWORK BLOCKCHAIN] Failed to inspect transaction ${txHash}:`,
+        (error as Error).message,
+      );
+      return undefined;
+    }
   }
 
-  public getRecentTransactions(limit = 10): ChainTransaction[] {
-    return Array.from(this.transactions.values()).reverse().slice(0, limit);
+  private normalizeValue(value: unknown): unknown {
+    if (typeof value === "bigint") return value.toString();
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.normalizeValue(item));
+    }
+
+    if (value && typeof value === "object") {
+      const output: Record<string, unknown> = {};
+      for (const [key, item] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        if (/^\d+$/.test(key)) continue;
+        output[key] = this.normalizeValue(item);
+      }
+      return output;
+    }
+
+    return value;
+  }
+
+  private normalizeParams(
+    args: ethers.Result,
+    inputs: readonly ethers.ParamType[],
+  ): Record<string, unknown> {
+    const params: Record<string, unknown> = {};
+
+    inputs.forEach((input, index) => {
+      const name = input.name || `arg${index}`;
+      params[name] = this.normalizeValue(args[index]);
+    });
+
+    return params;
+  }
+
+  public async getRecentTransactions(limit = 10): Promise<ChainTransaction[]> {
+    if (!this.provider || !this.contractAddress) {
+      return Array.from(this.transactions.values())
+        .sort((a, b) => b.blockNumber - a.blockNumber)
+        .slice(0, limit);
+    }
+
+    try {
+      const latestBlock = await this.provider.getBlockNumber();
+      const fromBlock = Math.max(0, latestBlock - HISTORY_BLOCK_WINDOW);
+
+      const logs = await this.provider.getLogs({
+        address: this.contractAddress,
+        fromBlock,
+        toBlock: latestBlock,
+      });
+
+      const byHash = new Map<string, ChainTransaction>();
+
+      for (const log of logs) {
+        let parsedLog: ethers.LogDescription | null = null;
+
+        try {
+          parsedLog = VERIWORK_INTERFACE.parseLog({
+            topics: log.topics,
+            data: log.data,
+          });
+        } catch {
+          continue;
+        }
+
+        if (!parsedLog) continue;
+
+        if (byHash.has(log.transactionHash)) continue;
+
+        const tx = await this.provider.getTransaction(log.transactionHash);
+        const receipt = await this.provider.getTransactionReceipt(
+          log.transactionHash,
+        );
+        if (!tx || !receipt) continue;
+
+        const block = await this.provider.getBlock(log.blockNumber);
+
+        const parsedTx = tx.data
+          ? VERIWORK_INTERFACE.parseTransaction({
+              data: tx.data,
+              value: tx.value,
+            })
+          : null;
+
+        const chainTx: ChainTransaction = {
+          txHash: log.transactionHash,
+          blockNumber: log.blockNumber,
+          timestamp: block
+            ? new Date(Number(block.timestamp) * 1000).toISOString()
+            : new Date().toISOString(),
+          from: receipt.from || tx.from,
+          to: tx.to || this.contractAddress,
+          method: parsedTx?.name || parsedLog.name || "contractCall",
+          params: parsedTx
+            ? this.normalizeParams(parsedTx.args, parsedTx.fragment.inputs)
+            : { event: parsedLog.name },
+          status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
+          gasUsed: Number(receipt.gasUsed),
+          blockHash: receipt.blockHash || undefined,
+          explorerUrl: `${this.explorerBaseUrl}/tx/${log.transactionHash}`,
+        };
+
+        byHash.set(log.transactionHash, chainTx);
+        this.transactions.set(log.transactionHash, chainTx);
+      }
+
+      return Array.from(byHash.values())
+        .sort((a, b) => {
+          if (b.blockNumber !== a.blockNumber) {
+            return b.blockNumber - a.blockNumber;
+          }
+          return b.timestamp.localeCompare(a.timestamp);
+        })
+        .slice(0, limit);
+    } catch (error) {
+      console.warn(
+        "[VERIWORK BLOCKCHAIN] Historical transaction scan failed:",
+        (error as Error).message,
+      );
+
+      return Array.from(this.transactions.values())
+        .sort((a, b) => b.blockNumber - a.blockNumber)
+        .slice(0, limit);
+    }
   }
 
   public async getRecentBlocks(limit = 6): Promise<ChainBlock[]> {

@@ -751,7 +751,7 @@ app.get("/api/blockchain/status", async (_req: Request, res: Response) => {
 app.get("/api/blockchain/stats", async (_req: Request, res: Response) => {
   try {
     const network = await blockchainService.getNetworkInfo();
-    const recentTx = blockchainService.getRecentTransactions(8);
+    const recentTx = await blockchainService.getRecentTransactions(8);
     const recentBlocks = await blockchainService.getRecentBlocks(5);
     res.json({
       success: true,
@@ -765,9 +765,9 @@ app.get("/api/blockchain/stats", async (_req: Request, res: Response) => {
 });
 
 // Inspect on-chain transaction
-app.get("/api/blockchain/tx/:txHash", (req: Request, res: Response) => {
+app.get("/api/blockchain/tx/:txHash", async (req: Request, res: Response) => {
   try {
-    const tx = blockchainService.getTransaction(req.params.txHash);
+    const tx = await blockchainService.getTransaction(req.params.txHash);
     if (!tx) {
       return res
         .status(404)
