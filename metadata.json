@@ -1,0 +1,6 @@
+{
+  "name": "VERIWORK - Evidence-Based Verification of Physical Maintenance Claims",
+  "description": "Verifiable physical maintenance infrastructure platform combining AI-assisted evidence analysis, cross-evidence verification, replay detection, and tamper-evident MST blockchain audit trails.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
