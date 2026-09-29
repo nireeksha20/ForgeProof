@@ -239,6 +239,58 @@ class BlockchainService {
     return this.contract;
   }
 
+  public async getTaskOnChain(taskId: string): Promise<{
+    taskId: string;
+    assetId: string;
+    technicianId: string;
+    state: number;
+    evidenceHash: string;
+    verdict: number;
+    createdAt: number;
+    committedAt: number;
+    verifiedAt: number;
+    closedAt: number;
+    exists: boolean;
+  } | null> {
+    const contract = await this.checkReadyContract();
+
+    try {
+      const task = await contract.getTask(taskId);
+
+      return {
+        taskId: String(task.taskId),
+        assetId: String(task.assetId),
+        technicianId: String(task.technicianId),
+        state: Number(task.state),
+        evidenceHash: String(task.evidenceHash),
+        verdict: Number(task.verdict),
+        createdAt: Number(task.createdAt),
+        committedAt: Number(task.committedAt),
+        verifiedAt: Number(task.verifiedAt),
+        closedAt: Number(task.closedAt),
+        exists: Boolean(task.exists),
+      };
+    } catch (error) {
+      const err = error as {
+        code?: string;
+        reason?: string;
+        shortMessage?: string;
+      };
+
+      const message =
+        `${err.reason || ""} ${err.shortMessage || ""}`.toLowerCase();
+
+      if (
+        err.code === "CALL_EXCEPTION" &&
+        message.includes("task does not exist")
+      ) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   private formatBytes32Hash(hash: string): string {
     if (!hash || typeof hash !== "string") {
       throw new Error("Invalid SHA-256 hash: hash must be a non-empty string.");
