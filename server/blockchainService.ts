@@ -1,5 +1,9 @@
-import { ethers } from 'ethers';
-import { BlockchainCommitment, VerificationVerdict } from '../src/types/veriwork';
+import "dotenv/config";
+import { ethers } from "ethers";
+import {
+  BlockchainCommitment,
+  VerificationVerdict,
+} from "../src/types/veriwork";
 
 export interface ChainTransaction {
   txHash: string;
@@ -9,7 +13,7 @@ export interface ChainTransaction {
   to: string;
   method: string;
   params: Record<string, unknown>;
-  status: 'SUCCESS' | 'REVERTED';
+  status: "SUCCESS" | "REVERTED";
   gasUsed: number;
   blockHash?: string;
   explorerUrl?: string;
@@ -48,7 +52,7 @@ const VERIWORK_REGISTRY_ABI = [
   "function getVerification(string memory _taskId) external view returns (tuple(string taskId, bytes32 evidenceHash, uint8 verdict, uint8 integrityScore, uint256 timestamp, address verifiedBy, string verificationEngineVersion))",
   "function totalCommitments() external view returns (uint256)",
   "function totalVerifications() external view returns (uint256)",
-  "function totalChallenges() external view returns (uint256)"
+  "function totalChallenges() external view returns (uint256)",
 ];
 
 class BlockchainService {
@@ -56,7 +60,7 @@ class BlockchainService {
   private chainId: string;
   private contractAddress: string;
   private privateKey: string;
-  private explorerBaseUrl: string = 'https://testnet.mstscan.com';
+  private explorerBaseUrl: string = "https://testnet.mstscan.com";
 
   private provider: ethers.JsonRpcProvider | null = null;
   private wallet: ethers.Wallet | null = null;
@@ -67,10 +71,11 @@ class BlockchainService {
   private commitments: Map<string, BlockchainCommitment> = new Map();
 
   constructor() {
-    this.rpcUrl = process.env.MST_RPC_URL || 'https://testnetrpc.mstblockchain.com';
-    this.chainId = process.env.MST_CHAIN_ID || '91562037';
-    this.contractAddress = process.env.MST_CONTRACT_ADDRESS || '';
-    this.privateKey = process.env.MST_PRIVATE_KEY || '';
+    this.rpcUrl =
+      process.env.MST_RPC_URL || "https://testnetrpc.mstblockchain.com";
+    this.chainId = process.env.MST_CHAIN_ID || "91562037";
+    this.contractAddress = process.env.MST_CONTRACT_ADDRESS || "";
+    this.privateKey = process.env.MST_PRIVATE_KEY || "";
 
     this.initializeEthers();
   }
@@ -79,16 +84,26 @@ class BlockchainService {
     if (!this.rpcUrl) return;
 
     try {
-      this.provider = new ethers.JsonRpcProvider(this.rpcUrl, parseInt(this.chainId, 10));
+      this.provider = new ethers.JsonRpcProvider(
+        this.rpcUrl,
+        parseInt(this.chainId, 10),
+      );
 
       if (this.privateKey) {
         this.wallet = new ethers.Wallet(this.privateKey, this.provider);
         if (this.contractAddress && ethers.isAddress(this.contractAddress)) {
-          this.contract = new ethers.Contract(this.contractAddress, VERIWORK_REGISTRY_ABI, this.wallet);
+          this.contract = new ethers.Contract(
+            this.contractAddress,
+            VERIWORK_REGISTRY_ABI,
+            this.wallet,
+          );
         }
       }
     } catch (err) {
-      console.warn('[VERIWORK BLOCKCHAIN] Ethers initialization warning:', (err as Error).message);
+      console.warn(
+        "[VERIWORK BLOCKCHAIN] Ethers initialization warning:",
+        (err as Error).message,
+      );
     }
   }
 
@@ -96,13 +111,13 @@ class BlockchainService {
     if (!this.rpcUrl || !this.privateKey) {
       return {
         connected: false,
-        network: 'MST Testnet',
+        network: "MST Testnet",
         chainId: this.chainId,
         contractAddress: this.contractAddress,
-        walletAddress: '',
-        walletBalance: '0 tMSTC',
+        walletAddress: "",
+        walletBalance: "0 tMSTC",
         latestBlock: 0,
-        statusMessage: 'MST NOT CONFIGURED',
+        statusMessage: "MST NOT CONFIGURED",
         explorerBaseUrl: this.explorerBaseUrl,
       };
     }
@@ -110,13 +125,13 @@ class BlockchainService {
     if (!this.contractAddress || !ethers.isAddress(this.contractAddress)) {
       return {
         connected: false,
-        network: 'MST Testnet',
+        network: "MST Testnet",
         chainId: this.chainId,
         contractAddress: this.contractAddress,
-        walletAddress: this.wallet ? this.wallet.address : '',
-        walletBalance: '0 tMSTC',
+        walletAddress: this.wallet ? this.wallet.address : "",
+        walletBalance: "0 tMSTC",
         latestBlock: 0,
-        statusMessage: 'INVALID CONTRACT CONFIGURATION',
+        statusMessage: "INVALID CONTRACT CONFIGURATION",
         explorerBaseUrl: this.explorerBaseUrl,
       };
     }
@@ -129,57 +144,60 @@ class BlockchainService {
       if (!this.provider || !this.wallet) {
         return {
           connected: false,
-          network: 'MST Testnet',
+          network: "MST Testnet",
           chainId: this.chainId,
           contractAddress: this.contractAddress,
-          walletAddress: '',
-          walletBalance: '0 tMSTC',
+          walletAddress: "",
+          walletBalance: "0 tMSTC",
           latestBlock: 0,
-          statusMessage: 'MST CONNECTION FAILED',
+          statusMessage: "MST CONNECTION FAILED",
           explorerBaseUrl: this.explorerBaseUrl,
         };
       }
 
       const latestBlock = await this.provider.getBlockNumber();
       const balance = await this.provider.getBalance(this.wallet.address);
-      const balanceFormatted = ethers.formatEther(balance) + ' tMSTC';
+      const balanceFormatted = ethers.formatEther(balance) + " tMSTC";
 
       if (balance === 0n) {
         return {
           connected: false,
-          network: 'MST Testnet',
+          network: "MST Testnet",
           chainId: this.chainId,
           contractAddress: this.contractAddress,
           walletAddress: this.wallet.address,
           walletBalance: balanceFormatted,
           latestBlock,
-          statusMessage: 'INSUFFICIENT MST TESTNET BALANCE',
+          statusMessage: "INSUFFICIENT MST TESTNET BALANCE",
           explorerBaseUrl: this.explorerBaseUrl,
         };
       }
 
       return {
         connected: true,
-        network: 'MST Testnet',
+        network: "MST Testnet",
         chainId: this.chainId,
         contractAddress: this.contractAddress,
         walletAddress: this.wallet.address,
         walletBalance: balanceFormatted,
         latestBlock,
-        statusMessage: 'LIVE MST TESTNET',
+        statusMessage: "LIVE MST TESTNET",
         explorerBaseUrl: this.explorerBaseUrl,
       };
     } catch (err) {
-      console.error('[VERIWORK BLOCKCHAIN] Status RPC error:', (err as Error).message);
+      console.error(
+        "[VERIWORK BLOCKCHAIN] Status RPC error:",
+        (err as Error).message,
+      );
       return {
         connected: false,
-        network: 'MST Testnet',
+        network: "MST Testnet",
         chainId: this.chainId,
         contractAddress: this.contractAddress,
-        walletAddress: this.wallet ? this.wallet.address : '',
-        walletBalance: '0 tMSTC',
+        walletAddress: this.wallet ? this.wallet.address : "",
+        walletBalance: "0 tMSTC",
         latestBlock: 0,
-        statusMessage: 'MST CONNECTION FAILED',
+        statusMessage: "MST CONNECTION FAILED",
         explorerBaseUrl: this.explorerBaseUrl,
       };
     }
@@ -206,34 +224,42 @@ class BlockchainService {
   private async checkReadyContract(): Promise<ethers.Contract> {
     const status = await this.getBlockchainStatus();
     if (!status.connected) {
-      throw new Error(`MST Blockchain Error: ${status.statusMessage}. On-chain transaction halted.`);
+      throw new Error(
+        `MST Blockchain Error: ${status.statusMessage}. On-chain transaction halted.`,
+      );
     }
     if (!this.contract) {
       this.initializeEthers();
     }
     if (!this.contract) {
-      throw new Error('MST Blockchain Error: Contract instance not initialized.');
+      throw new Error(
+        "MST Blockchain Error: Contract instance not initialized.",
+      );
     }
     return this.contract;
   }
 
   private formatBytes32Hash(hash: string): string {
-    if (!hash || typeof hash !== 'string') {
-      throw new Error('Invalid SHA-256 hash: hash must be a non-empty string.');
+    if (!hash || typeof hash !== "string") {
+      throw new Error("Invalid SHA-256 hash: hash must be a non-empty string.");
     }
     let clean = hash.trim();
-    if (clean.startsWith('0x') || clean.startsWith('0X')) {
+    if (clean.startsWith("0x") || clean.startsWith("0X")) {
       clean = clean.slice(2);
     }
     if (!/^[0-9a-fA-F]{64}$/.test(clean)) {
       throw new Error(
-        `Invalid SHA-256 hash digest "${hash}". Expected exactly 64 hexadecimal characters (optional 0x prefix).`
+        `Invalid SHA-256 hash digest "${hash}". Expected exactly 64 hexadecimal characters (optional 0x prefix).`,
       );
     }
-    return ethers.hexlify(ethers.getBytes('0x' + clean));
+    return ethers.hexlify(ethers.getBytes("0x" + clean));
   }
 
-  public async createTaskOnChain(taskId: string, assetId: string, creatorAddress?: string): Promise<ChainTransaction> {
+  public async createTaskOnChain(
+    taskId: string,
+    assetId: string,
+    creatorAddress?: string,
+  ): Promise<ChainTransaction> {
     const contract = await this.checkReadyContract();
     const txResponse = await contract.createTask(taskId, assetId);
     const receipt = await txResponse.wait();
@@ -244,9 +270,9 @@ class BlockchainService {
       timestamp: new Date().toISOString(),
       from: creatorAddress || this.wallet?.address || receipt.from,
       to: this.contractAddress,
-      method: 'createTask',
+      method: "createTask",
       params: { taskId, assetId },
-      status: receipt.status === 1 ? 'SUCCESS' : 'REVERTED',
+      status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
       gasUsed: Number(receipt.gasUsed),
       blockHash: receipt.blockHash,
       explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
@@ -256,7 +282,10 @@ class BlockchainService {
     return tx;
   }
 
-  public async assignTaskOnChain(taskId: string, technicianId: string): Promise<ChainTransaction> {
+  public async assignTaskOnChain(
+    taskId: string,
+    technicianId: string,
+  ): Promise<ChainTransaction> {
     const contract = await this.checkReadyContract();
     const txResponse = await contract.assignTask(taskId, technicianId);
     const receipt = await txResponse.wait();
@@ -267,9 +296,9 @@ class BlockchainService {
       timestamp: new Date().toISOString(),
       from: this.wallet?.address || receipt.from,
       to: this.contractAddress,
-      method: 'assignTask',
+      method: "assignTask",
       params: { taskId, technicianId },
-      status: receipt.status === 1 ? 'SUCCESS' : 'REVERTED',
+      status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
       gasUsed: Number(receipt.gasUsed),
       blockHash: receipt.blockHash,
       explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
@@ -290,9 +319,9 @@ class BlockchainService {
       timestamp: new Date().toISOString(),
       from: this.wallet?.address || receipt.from,
       to: this.contractAddress,
-      method: 'startTask',
+      method: "startTask",
       params: { taskId },
-      status: receipt.status === 1 ? 'SUCCESS' : 'REVERTED',
+      status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
       gasUsed: Number(receipt.gasUsed),
       blockHash: receipt.blockHash,
       explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
@@ -306,12 +335,16 @@ class BlockchainService {
     taskId: string,
     packageId: string,
     evidenceHash: string,
-    submitterAddress?: string
+    submitterAddress?: string,
   ): Promise<BlockchainCommitment> {
     const contract = await this.checkReadyContract();
     const bytes32Hash = this.formatBytes32Hash(evidenceHash);
 
-    const txResponse = await contract.submitEvidenceCommitment(taskId, packageId, bytes32Hash);
+    const txResponse = await contract.submitEvidenceCommitment(
+      taskId,
+      packageId,
+      bytes32Hash,
+    );
     const receipt = await txResponse.wait();
 
     const commitment: BlockchainCommitment = {
@@ -319,12 +352,12 @@ class BlockchainService {
       blockNumber: receipt.blockNumber,
       blockTimestamp: new Date().toISOString(),
       gasUsed: Number(receipt.gasUsed),
-      network: 'MST Testnet (Chain ID: ' + this.chainId + ')',
+      network: "MST Testnet (Chain ID: " + this.chainId + ")",
       contractAddress: this.contractAddress,
       evidenceHash: evidenceHash,
-      verdictRecorded: 'UNVERIFIED',
+      verdictRecorded: "UNVERIFIED",
       committedBy: submitterAddress || this.wallet?.address || receipt.from,
-      state: receipt.status === 1 ? 'CONFIRMED' : 'TAMPER_DETECTED',
+      state: receipt.status === 1 ? "CONFIRMED" : "TAMPER_DETECTED",
       explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
     };
 
@@ -336,9 +369,9 @@ class BlockchainService {
       timestamp: commitment.blockTimestamp,
       from: commitment.committedBy,
       to: this.contractAddress,
-      method: 'submitEvidenceCommitment',
+      method: "submitEvidenceCommitment",
       params: { taskId, packageId, evidenceHash: bytes32Hash },
-      status: receipt.status === 1 ? 'SUCCESS' : 'REVERTED',
+      status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
       gasUsed: Number(receipt.gasUsed),
       blockHash: receipt.blockHash,
       explorerUrl: commitment.explorerUrl,
@@ -352,22 +385,22 @@ class BlockchainService {
     taskId: string,
     evidenceHash: string,
     verdict: VerificationVerdict,
-    integrityScore: number
+    integrityScore: number,
   ): Promise<ChainTransaction> {
     const contract = await this.checkReadyContract();
     const bytes32Hash = this.formatBytes32Hash(evidenceHash);
 
     // Solidity enum VerificationVerdict { NONE=0, VERIFIED=1, PARTIAL=2, SUSPICIOUS=3 }
     let verdictEnum = 1;
-    if (verdict === 'PARTIAL') verdictEnum = 2;
-    if (verdict === 'SUSPICIOUS') verdictEnum = 3;
+    if (verdict === "PARTIAL") verdictEnum = 2;
+    if (verdict === "SUSPICIOUS") verdictEnum = 3;
 
     const txResponse = await contract.recordVerification(
       taskId,
       bytes32Hash,
       verdictEnum,
       Math.min(100, Math.max(0, integrityScore)),
-      'VeriWork-Engine-v2.4-EVM'
+      "VeriWork-Engine-v2.4-EVM",
     );
     const receipt = await txResponse.wait();
 
@@ -382,9 +415,9 @@ class BlockchainService {
       timestamp: new Date().toISOString(),
       from: this.wallet?.address || receipt.from,
       to: this.contractAddress,
-      method: 'recordVerification',
+      method: "recordVerification",
       params: { taskId, evidenceHash: bytes32Hash, verdict, integrityScore },
-      status: receipt.status === 1 ? 'SUCCESS' : 'REVERTED',
+      status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
       gasUsed: Number(receipt.gasUsed),
       blockHash: receipt.blockHash,
       explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
@@ -394,7 +427,11 @@ class BlockchainService {
     return tx;
   }
 
-  public async challengeTaskOnChain(taskId: string, reason: string, challengerAddress?: string): Promise<ChainTransaction> {
+  public async challengeTaskOnChain(
+    taskId: string,
+    reason: string,
+    challengerAddress?: string,
+  ): Promise<ChainTransaction> {
     const contract = await this.checkReadyContract();
     const txResponse = await contract.challengeVerification(taskId, reason);
     const receipt = await txResponse.wait();
@@ -405,9 +442,9 @@ class BlockchainService {
       timestamp: new Date().toISOString(),
       from: challengerAddress || this.wallet?.address || receipt.from,
       to: this.contractAddress,
-      method: 'challengeVerification',
+      method: "challengeVerification",
       params: { taskId, reason },
-      status: receipt.status === 1 ? 'SUCCESS' : 'REVERTED',
+      status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
       gasUsed: Number(receipt.gasUsed),
       blockHash: receipt.blockHash,
       explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
@@ -417,7 +454,10 @@ class BlockchainService {
     return tx;
   }
 
-  public async resolveChallengeOnChain(taskId: string, resolutionNotes: string): Promise<ChainTransaction> {
+  public async resolveChallengeOnChain(
+    taskId: string,
+    resolutionNotes: string,
+  ): Promise<ChainTransaction> {
     const contract = await this.checkReadyContract();
     const txResponse = await contract.resolveChallenge(taskId, resolutionNotes);
     const receipt = await txResponse.wait();
@@ -428,9 +468,9 @@ class BlockchainService {
       timestamp: new Date().toISOString(),
       from: this.wallet?.address || receipt.from,
       to: this.contractAddress,
-      method: 'resolveChallenge',
+      method: "resolveChallenge",
       params: { taskId, resolutionNotes },
-      status: receipt.status === 1 ? 'SUCCESS' : 'REVERTED',
+      status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
       gasUsed: Number(receipt.gasUsed),
       blockHash: receipt.blockHash,
       explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
@@ -451,9 +491,9 @@ class BlockchainService {
       timestamp: new Date().toISOString(),
       from: this.wallet?.address || receipt.from,
       to: this.contractAddress,
-      method: 'closeTask',
+      method: "closeTask",
       params: { taskId },
-      status: receipt.status === 1 ? 'SUCCESS' : 'REVERTED',
+      status: receipt.status === 1 ? "SUCCESS" : "REVERTED",
       gasUsed: Number(receipt.gasUsed),
       blockHash: receipt.blockHash,
       explorerUrl: `${this.explorerBaseUrl}/tx/${receipt.hash}`,
@@ -491,7 +531,7 @@ class BlockchainService {
         if (block) {
           blocks.push({
             blockNumber: block.number,
-            blockHash: block.hash || '',
+            blockHash: block.hash || "",
             timestamp: new Date(Number(block.timestamp) * 1000).toISOString(),
             transactionsCount: block.transactions.length,
           });
